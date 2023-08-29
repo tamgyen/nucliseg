@@ -4,6 +4,7 @@ import time
 
 import cv2
 import numpy as np
+from torchvision.io import read_image, ImageReadMode
 
 from data_loading import EndoNukeDataset, show
 
@@ -14,6 +15,8 @@ import torchvision
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 from torchvision.transforms import v2 as T
+from torchvision.transforms.v2 import functional as F
+from torchvision import datapoints as dp
 
 import lightning as L
 
@@ -238,9 +241,11 @@ if __name__ == '__main__':
 
     #main()
 
-    test_image = cv2.imread('../01_data/src.jpg')
-    test_crop = test_image[0:1000, 0:1000, :]
-    test_crop = cv2.resize(test_crop, (200, 200))
+    # test_image = cv2.imread('../01_data/src.jpg')
+    # test_crop = test_image[0:1000, 0:1000, :]
+    # test_crop = cv2.resize(test_crop, (200, 200))
+    #
+    # cv2.imwrite('../01_data/src_crop_rescaled_1000_to_200.png', test_crop)
 
     # test_example = cv2.imread('C:/Dev/Projects/3DHISTEC/01_data/01_dataset_endonuke/images/2357.png')
     #
@@ -253,18 +258,25 @@ if __name__ == '__main__':
     # cv2.waitKey(0)
     # cv2.destroyAllWindows()
 
+    img = read_image('C:/Dev/Projects/nucliseg/01_data/src_crop_rescaled_1000_to_200.png', mode=ImageReadMode.RGB)
+
+    img = F.to_image_tensor(img)
+    img = F.convert_dtype(img, torch.float32)
+
     model = torch.load(f'../03_models/MASK_RCNN_v01_ep_4.pt')
 
     model.eval()
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-    test_crop_torch = torch.from_numpy(test_crop).float().permute(2, 0, 1)
+    img = img.to(device)
 
-    x = [test_crop_torch.to(device)]
+    x = [img]
 
     preds = model(x)
 
-    show(((test_crop_torch,), preds))
+    show(((img,), preds), show_boxes=False)
+
+    masks = preds[0].get('masks').detach().to('cpu').numpy()
 
     print(':)')

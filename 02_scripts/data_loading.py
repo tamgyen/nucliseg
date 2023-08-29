@@ -17,6 +17,9 @@ import torch.utils.data
 
 from torchvision.utils import draw_segmentation_masks, draw_bounding_boxes
 
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
+
 disable_beta_transforms_warning()
 
 
@@ -78,6 +81,9 @@ def show(sample, show_masks=True, show_boxes=True):
 
     masks = target.get('masks')
 
+    masks = masks.to('cpu')
+    image = image.to('cpu')
+
     annotated_image = image
 
     if show_masks:
@@ -87,8 +93,10 @@ def show(sample, show_masks=True, show_boxes=True):
     if show_boxes:
         annotated_image = draw_bounding_boxes(annotated_image, target.get("boxes"), colors="blue", width=3)
 
+    annotated_image_np = annotated_image.permute(1, 2, 0).numpy()
+
     fig, ax = plt.subplots()
-    ax.imshow(annotated_image.permute(1, 2, 0).numpy())
+    ax.imshow(annotated_image_np)
     ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
     fig.tight_layout()
 
