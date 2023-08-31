@@ -1,4 +1,5 @@
 import os
+import typing
 
 import PIL.Image
 import cv2
@@ -17,9 +18,19 @@ device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cp
 
 
 class KeypointsOnImage:
-    def __init__(self, image: np.ndarray, keypoints:np.ndarray):
-        self.image = image
-        self.keypoints = keypoints
+    def __init__(self,
+                 image: np.ndarray = None,
+                 keypoints: np.ndarray = None,
+                 dir: str = None,
+                 id: typing.Union[int, str] = None):
+
+        if image is not None:
+            self.image = image
+        if keypoints is not None:
+            self.keypoints = keypoints
+        if dir is not None and id is not None:
+            self.image = io.imread(f'{dir}/{id}.png')
+            self.keypoints = np.load(f'{dir}/{id}.npy')
 
     def save(self, dir, id):
 
@@ -48,6 +59,15 @@ class KeypointsOnImage:
 
         return ax
 
+    def get_roi(self, size):
+        for keypoint in self.keypoints.astype('uint32'):
+            x_0 = keypoint[1] - size // 2
+            x_1 = keypoint[1] + size // 2
+            y_0 = keypoint[0] - size // 2
+            y_1 = keypoint[0] + size // 2
+
+            yield (y_0, y_1, x_0, x_1), self.image[x_0:x_1, y_0:y_1, :]
+
 
 def split_image(image: np.ndarray, kernel_size: int) -> np.ndarray:
     h, w, c = image.shape
@@ -67,72 +87,77 @@ def image_stack_to_batch_tensor(image_stack):
 
     return batch_t
 
-model_input_shape = [3, 256, 256]
-DOWNSAMPLE_FROM = 1024
 
-image_src = io.imread('C:/Dev/Projects/nucliseg/01_data/src.jpg')
+if __name__ == '__main__':
 
-im_stack = split_image(image_src, DOWNSAMPLE_FROM)
+    model_input_shape = [3, 256, 256]
+    DOWNSAMPLE_FROM = 1024
 
-images = im_stack[:8, 0, :, :, :]
+    image_src = io.imread('C:/Dev/Projects/nucliseg/01_data/src.jpg')
 
-# ******** LOAD MODEL *******************
+    im_stack = split_image(image_src, DOWNSAMPLE_FROM)
 
-model_path = "../03_models/nucleus-keypoint/6hjudtgc/epoch=29-step=6690.pt"
+    images = im_stack[:8, 0, :, :, :]
 
-model = torch.load(model_path)
+    # ******** LOAD MODEL *******************
 
-model.eval()
+    model_path = "../03_models/nucleus-keypoint/6hjudtgc/epoch=29-step=6690.pt"
 
-model.to(device)
+    model = torch.load(model_path)
 
-# ********** INFERENCE *********************
-# images_t = to_tensor(images)
+    model.eval()
 
-images_t = image_stack_to_batch_tensor(images)
+    model.to(device)
 
-images_t = F.resize(images_t, model_input_shape[1:])
+    # ********** INFERENCE *********************
+    # images_t = to_tensor(images)
 
-images_t = images_t.to(device)
+    images_t = image_stack_to_batch_tensor(images)
 
-# images_t = images_t.unsqueeze(0)
+    images_t = F.resize(images_t, model_input_shape[1:])
 
-with torch.no_grad():
-    heatmaps = model(images_t)
+    images_t = images_t.to(device)
 
-keypoints = \
-    get_keypoints_from_heatmap_batch_maxpool(heatmaps, max_keypoints=500, min_keypoint_pixel_distance=3)
+    # images_t = images_t.unsqueeze(0)
 
-keypoint_predicted_images = []
-for image, keypoint in zip(images, keypoints):
-    kp = np.array(keypoint[0])
-    kp_rescaled = kp * DOWNSAMPLE_FROM / model_input_shape[1]
+    with torch.no_grad():
+        heatmaps = model(images_t)
 
-    keypoint_predicted_images.append(KeypointsOnImage(image, kp_rescaled))
+    keypoints = \
+        get_keypoints_from_heatmap_batch_maxpool(heatmaps, max_keypoints=500, min_keypoint_pixel_distance=2)
 
+    keypoint_predicted_images = []
+    for image, keypoint in zip(images, keypoints):
+        kp = np.array(keypoint[0])
+        kp_rescaled = kp * DOWNSAMPLE_FROM / model_input_shape[1]
 
+        keypoint_predicted_images.append(KeypointsOnImage(image, kp_rescaled))
 
-keypoints = np.array(keypoints)
-keypoints = keypoints.squeeze()
+    for i, annotated in enumerate(keypoint_predicted_images):
+        annotated.plot(show=True)
+        annotated.save('../01_data/kpoi_store', i)
 
-# ************* POSTPROC ***********************
+    # keypoints = np.array(keypoints)
+    # keypoints = keypoints.squeeze()
 
-# keypoints_rescaled = keypoints * DOWNSAMPLE_FROM / model_input_shape[1]
-#
-# fig, ax = plt.subplots()
-#
-# # Display the RGB image
-# ax.imshow(first_image)
-#
-# # Plot circles for each keypoint
-# for point in keypoints_rescaled:
-#     x, y = point
-#     circle = plt.Circle((x, y), radius=3, color='r', fill=False)
-#     ax.add_patch(circle)
-#
-# ax.set_aspect('equal')
-# ax.invert_yaxis()  # Invert y-axis to match image coordinates
-# ax.set_xlim(0, first_image.shape[1])  # Set x-axis limits
-# ax.set_ylim(0, first_image.shape[0])  # Set y-axis limits
-#
-# plt.show()
+    # ************* POSTPROC ***********************
+
+    # keypoints_rescaled = keypoints * DOWNSAMPLE_FROM / model_input_shape[1]
+    #
+    # fig, ax = plt.subplots()
+    #
+    # # Display the RGB image
+    # ax.imshow(first_image)
+    #
+    # # Plot circles for each keypoint
+    # for point in keypoints_rescaled:
+    #     x, y = point
+    #     circle = plt.Circle((x, y), radius=3, color='r', fill=False)
+    #     ax.add_patch(circle)
+    #
+    # ax.set_aspect('equal')
+    # ax.invert_yaxis()  # Invert y-axis to match image coordinates
+    # ax.set_xlim(0, first_image.shape[1])  # Set x-axis limits
+    # ax.set_ylim(0, first_image.shape[0])  # Set y-axis limits
+    #
+    # plt.show()
