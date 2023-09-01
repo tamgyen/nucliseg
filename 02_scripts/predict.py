@@ -59,6 +59,7 @@ class KeypointsOnImage:
 
         return ax
 
+    # TODO: what if we are on the edge of the im?
     def get_roi(self, size):
         for keypoint in self.keypoints.astype('uint32'):
             x_0 = keypoint[1] - size // 2
