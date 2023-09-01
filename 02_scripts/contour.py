@@ -8,6 +8,10 @@ from skimage.segmentation import watershed
 from skimage.filters import threshold_multiotsu
 from skimage import feature
 from skimage import filters
+from skimage.segmentation import clear_border
+
+from skimage import color
+
 from tqdm import tqdm
 
 
@@ -41,8 +45,16 @@ def compute_image_grad(image):
     ).astype(np.uint8)
     return image_grad_abs
 
-def make_foreground(keypoints, imsize):
-    pass
+
+def place_seeds(keypoints, imsize, square_size):
+    canvas = np.zeros((imsize[0], imsize[1]), dtype=np.uint8)
+    for label, point in enumerate(keypoints):
+        x, y = point.astype(np.uint32)
+
+        canvas[max([y - square_size // 2, 0]):min(y + square_size // 2, imsize[0] - 1),
+        max([x - square_size // 2, 0]):min([x + square_size // 2, imsize[1] - 1])] = 3 + label
+
+    return canvas
 
 
 NUM_OTSU_CLASSES = 3
@@ -54,17 +66,21 @@ for id in range(8):
 
     image = kpoi.image
 
+    image_cv = cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.uint8)
+
     roi_gen = kpoi.get_roi(ROI_SIZE)
 
     # image_gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY).astype(np.uint8)
 
     image_blue = image[:, :, 0]
-    image_grad = compute_image_grad(image_blue)
 
     image_gray = image_blue.astype(np.uint8)
 
     image_gray_blur = cv2.GaussianBlur(image_gray, (3, 3), 0)
-    ret_1, thresh = cv2.threshold(image_gray_blur, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+
+    image_to_shed = cv2.cvtColor(image_gray_blur, cv2.COLOR_GRAY2BGR)
+
+    ret_1, thresh = cv2.threshold(image_gray_blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
     thresh = cv2.bitwise_not(thresh)
 
@@ -72,24 +88,55 @@ for id in range(8):
 
     sure_bg = cv2.dilate(thresh, kernel, iterations=DILATE_ITER)
 
-    sure_fg =
+    markers = place_seeds(kpoi.keypoints, (sure_bg.shape[0], sure_bg.shape[1]), 8)
 
+    sure_fg = np.zeros_like(markers)
+    sure_fg[markers > 2] = 255
 
+    # ret, cc = cv2.connectedComponents(sure_fg)
+
+    ambiguous = cv2.subtract(sure_bg, sure_fg)
+
+    markers += 1
+
+    markers[ambiguous == 255] = 0
+
+    # plt.imshow(markers, cmap='jet')
+    # plt.show()
+
+    markers = markers.astype(np.int32)
+
+    markers = cv2.watershed(image=image_to_shed, markers=markers)
     # ---------------------- VISU -----------------------------------
 
-    # Create an all-zero array with the same shape as the RGB image
-    overlay = np.zeros_like(image)
+    image_bundaries = image_cv
+    image_bundaries[markers == -1] = [255, 0, 255]
 
-    # Set the pixels where the binary image is nonzero to white
-    overlay[sure_bg > 0] = [255, 255, 255]
+    image_masks = color.label2rgb(markers, bg_label=0)
 
-    result = cv2.addWeighted(cv2.cvtColor(image, cv2.COLOR_RGB2BGR), 1 - .5, overlay, .5, 0)
+    image_assemble = np.zeros((image_bundaries.shape[0], image_bundaries.shape[1] * 2, 3))
 
-    # cv2.imshow("sure_bg", result)
+    image_assemble[:, :image_bundaries.shape[1], :] = image_bundaries
+    image_assemble[:, image_bundaries.shape[1]:, :] = image_masks
+
+    # cv2.imshow('Image Assemble', image_masks)
+    # cv2.imshow('im_bounds', image_bundaries)
     # cv2.waitKey(0)
     # cv2.destroyAllWindows()
 
-    kpoi_result = KeypointsOnImage(image=cv2.cvtColor(result, cv2.COLOR_BGR2RGB), keypoints=kpoi.keypoints)
+    # Create an all-zero array with the same shape as the RGB image
+    # overlay = np.zeros_like(image)
+
+    # Set the pixels where the binary image is nonzero to white
+    # overlay[ambiguous > 0] = [255, 255, 255]
+    #
+    # result = cv2.addWeighted(cv2.cvtColor(image, cv2.COLOR_RGB2BGR), 1 - .5, overlay, .5, 0)
+
+    # cv2.imshow("sure_bg", image_cv)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
+
+    kpoi_result = KeypointsOnImage(image=cv2.cvtColor(image_bundaries, cv2.COLOR_BGR2RGB), keypoints=kpoi.keypoints)
 
     kpoi_result.plot(show=True)
 
@@ -109,12 +156,12 @@ for id in range(8):
 #
 #     mask = watershed(image_grad, markers)
 
-    # print(":)")
-    #
-    # cv2.imshow('im_gray', edges2)
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
+# print(":)")
+#
+# cv2.imshow('im_gray', edges2)
+# cv2.waitKey(0)
+# cv2.destroyAllWindows()
 
 
-    # plt.imshow(mask)
-    # plt.show()
+# plt.imshow(mask)
+# plt.show()
