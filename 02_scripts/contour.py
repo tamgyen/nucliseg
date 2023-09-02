@@ -176,16 +176,25 @@ for i in tqdm(range(16)):
 
         # -------------------- POSTPROC -------------------------------
         draw_settings = {'min_area': 50,
-                         'max_area': 5000,
-                         'color_ranges': {'red': (112, 210, 71),
-                                          'blue': (10, 53, 198),
-                                          'orange': (109, 87, 125),
-                                          'yellow': (40, 26, 200)},
+                         'max_area': 6000,
+                         'color_reference': np.array([[8, 160, 110],  # red
+                                                      [10, 190, 70],  # red
+                                                      [13, 152, 149],  # red
+                                                      [114, 60, 198],  # blue
+                                                      [15, 87, 125],    # orange
+                                                       [115, 26, 200]]),  # yellow
+                         'classes': ((255, 0, 0),
+                                     (255, 0, 0),
+                                     (255, 0, 0),
+                                     (0, 0, 255),
+                                     (255, 163, 0),
+                                     (255, 255, 0)),
                          'round_contour': 5,
-                         'contour_strength': 3
+                         'contour_strength': 2
                          }
 
         kpoi.add_filter_masks(markers, draw_settings)
+        # kpoi.add_masks(markers)
 
         cv2.imshow('drawn', cv2.cvtColor(kpoi.image, cv2.COLOR_RGB2BGR))
         cv2.waitKey(0)

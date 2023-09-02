@@ -80,10 +80,23 @@ class KeypointsOnImage:
             })
 
     def add_filter_masks(self, masks=None, draw_settings=None):
+
         for keypoint_index in range(len(self.keypoints)):
+            x, y = self.keypoints[keypoint_index].astype(np.uint32)
+
             mask = masks == keypoint_index + 4
 
             mask = mask.astype(np.uint8)
+
+            # check color
+            color = self.get_mask_color(self.image, mask)
+
+            sub = draw_settings.get('color_reference')-color
+            dists = np.linalg.norm(sub, axis=1)
+
+            color_class = draw_settings.get('classes')[np.argmin(dists)]
+
+            # check area
             area = np.sum(mask)
 
             if draw_settings.get('max_area') > area > draw_settings.get('min_area'):
@@ -102,19 +115,23 @@ class KeypointsOnImage:
                                               iterations=draw_settings.get('contour_strength'))
                     contour = mask - eroded
 
-            else:
-                cv2.circle(self.image, self.keypoints[keypoint_index], )
-                # plt.imshow(contour * 255)
-                # plt.show()
+                self.image[contour > 0] = color_class
 
-                self.image[contour > 0] = (255, 0, 255)
+            else:
+
+                cv2.circle(img=self.image, center=(x, y), radius=20, color=color_class, thickness=2)
+
+            cv2.circle(img=self.image, center=(x, y), radius=2, color=color_class, thickness=2)
+
+        return True
+
 
     @staticmethod
     def get_mask_color(image, mask):
-        image_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        image_hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
         mean = cv2.mean(image_hsv, mask=mask)
 
-        return mean
+        return np.array(mean[:-1])
 
     def plot_masks_on_image(self, image):
         restored = np.zeros_like(image)
@@ -218,10 +235,11 @@ if __name__ == '__main__':
         keypoints = get_keypoints_from_heatmap_batch_maxpool(heatmaps, max_keypoints=500, min_keypoint_pixel_distance=2)
 
         keypoint_predicted_images = []
-        for image, keypoint in zip(im_stack, keypoints):
+        for keypoint in keypoints:
             kp = np.array(keypoint[0])
             kp_rescaled = kp * DOWNSAMPLE_FROM / model_input_shape[1]
 
+            image = im_stack[k]
             kpoi = KeypointsOnImage(image=image, keypoints=kp_rescaled,
                                     id=(k // BATCH_SIZE, (k + BATCH_SIZE) % BATCH_SIZE))
 
