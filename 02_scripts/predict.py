@@ -26,7 +26,7 @@ class KeypointsOnImage:
                  dir: str = None,
                  id: tuple[int, int] = None):
 
-        self.masks = None
+        self.masks = {}
         if image is not None:
             self.image = image
 
@@ -59,14 +59,17 @@ class KeypointsOnImage:
 
             area = np.sum(single_mask)
 
-            # image_mask = self.image[y:y + h, x:x + w, :]
+            image_mask = self.image[y:y + h, x:x + w, :]
 
-            # text = f"H: {mean_color_hsv[0]}, S: {mean_color_hsv[1]}, V: {mean_color_hsv[2]}"
-            # fig, ax = plt.subplots()
-            # ax.imshow(image_mask)
-            # ax.axis('off')
-            # ax.set_title(text, fontsize=12)
-            # plt.show()
+            text = f"H: {round(mean_color_hsv[0])}, " \
+                   f"S: {round(mean_color_hsv[1])}, " \
+                   f"V: {round(mean_color_hsv[2])}, " \
+                   f"area: {area}"
+            fig, ax = plt.subplots()
+            ax.imshow(image_mask)
+            ax.axis('off')
+            ax.set_title(text, fontsize=12)
+            plt.show()
 
             self.masks.update({keypoint_index: {
                 'mask': single_mask,
@@ -75,6 +78,36 @@ class KeypointsOnImage:
                 'area': area
             }
             })
+
+    def add_filter_masks(self, masks=None, draw_settings=None):
+        for keypoint_index in range(len(self.keypoints)):
+            mask = masks == keypoint_index + 4
+
+            mask = mask.astype(np.uint8)
+            area = np.sum(mask)
+
+            if draw_settings.get('max_area') > area > draw_settings.get('min_area'):
+
+                if draw_settings.get('round_contour') > 0:
+                    open_kernel = draw_settings.get('round_contour')
+                    opened = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((open_kernel, open_kernel), np.uint8))
+
+                    eroded = cv2.morphologyEx(opened, cv2.MORPH_ERODE, np.ones((3, 3), np.uint8),
+                                              iterations=draw_settings.get('contour_strength'))
+
+                    contour = opened - eroded
+
+                else:
+                    eroded = cv2.morphologyEx(mask, cv2.MORPH_ERODE, np.ones((3, 3), np.uint8),
+                                              iterations=draw_settings.get('contour_strength'))
+                    contour = mask - eroded
+
+            else:
+                cv2.circle(self.image, self.keypoints[keypoint_index], )
+                # plt.imshow(contour * 255)
+                # plt.show()
+
+                self.image[contour > 0] = (255, 0, 255)
 
     @staticmethod
     def get_mask_color(image, mask):
@@ -102,14 +135,14 @@ class KeypointsOnImage:
 
     def plot_keypoints_on_image(self, image=None, radius=4, color=None):
         if image is None:
-            image = cv2.cvtColor(self.image, cv2.COLOR_RGB2BGR)
+            image = cv2.cvtColor(self.image.copy(), cv2.COLOR_RGB2BGR)
 
         if color is None:
             color = [0, 0, 255]
 
         for point in self.keypoints:
             x, y = point.astype(np.uint32)
-            cv2.circle(image, (x, y), radius, color, -1)
+            image = cv2.circle(image, (x, y), radius, color, -1)
 
         return image
 
@@ -189,16 +222,16 @@ if __name__ == '__main__':
             kp = np.array(keypoint[0])
             kp_rescaled = kp * DOWNSAMPLE_FROM / model_input_shape[1]
 
-            kpoi = KeypointsOnImage(image=image, keypoints=kp_rescaled, id=(k, k // BATCH_SIZE))
+            kpoi = KeypointsOnImage(image=image, keypoints=kp_rescaled,
+                                    id=(k // BATCH_SIZE, (k + BATCH_SIZE) % BATCH_SIZE))
 
-            kpoi_im = kpoi.plot_keypoints_on_image(image)
+            # kpoi_im = kpoi.plot_keypoints_on_image(image)
             # plt.imshow(kpoi_im)
             # plt.show()
 
             kpoi.save('../01_data/kpoi_store')
 
-            k+=1
-
+            k += 1
 
     # keypoints = np.array(keypoints)
     # keypoints = keypoints.squeeze()
