@@ -24,6 +24,7 @@ class KeypointsOnImage:
                  dir: str = None,
                  id: typing.Union[int, str] = None):
 
+        self.masks = None
         if image is not None:
             self.image = image
         if keypoints is not None:
@@ -69,6 +70,55 @@ class KeypointsOnImage:
 
             yield (y_0, y_1, x_0, x_1), self.image[x_0:x_1, y_0:y_1, :]
 
+    def add_masks(self, masks):
+        self.masks = []
+        for keypoint_index in range(len(self.keypoints)):
+            single_mask = masks == keypoint_index + 4
+            single_mask = single_mask.astype(np.uint8)
+
+            self.get_mask_color(self.image, single_mask)
+
+            x, y, w, h = cv2.boundingRect(single_mask)
+            single_mask = single_mask[y:y + h, x:x + w]
+
+            self.masks.append({'mask': single_mask,
+                               'coords': (x, y, w, h),
+                               })
+
+    @staticmethod
+    def get_mask_color(image, mask):
+        image_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        mean = cv2.mean(image_hsv, mask=mask)
+
+        return mean
+
+    def plot_masks_on_image(self, image):
+        restored = np.zeros_like(image)
+
+        bin_temp = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
+        bin_temp_2 = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
+        for mask in self.masks:
+            x, y, w, h = mask.get('coords')
+
+            bin_temp_2[y:y + h, x:x + w] = mask.get('mask')
+            bin_temp = cv2.bitwise_or(bin_temp, bin_temp_2)
+
+        restored[:, :, 2] = bin_temp * 255
+
+        result = cv2.addWeighted(cv2.cvtColor(image, cv2.COLOR_RGB2BGR), 1 - .5, restored, .5, 0)
+
+        return result
+
+    def plot_keypoints_on_image(self, image, radius=4, color=None):
+        if color is None:
+            color = [0, 0, 255]
+
+        for point in self.keypoints:
+            x, y = point.astype(np.uint32)
+            cv2.circle(image, (x, y), radius, color, -1)
+
+        return image
+
 
 def split_image(image: np.ndarray, kernel_size: int) -> np.ndarray:
     h, w, c = image.shape
@@ -98,7 +148,7 @@ if __name__ == '__main__':
 
     im_stack = split_image(image_src, DOWNSAMPLE_FROM)
 
-    images = im_stack[:8, 0, :, :, :]
+    images = im_stack[8:16, 0, :, :, :]
 
     # ******** LOAD MODEL *******************
 
