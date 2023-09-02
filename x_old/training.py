@@ -211,7 +211,7 @@ def main():
         # evaluate on the test dataset
         # evaluate(model, data_loader_test, device=device)
 
-        torch.save(model, f'../03_models/MASK_RCNN_v01_ep_{epoch}.pt')
+        torch.save(model, f'../nucliseg/models/MASK_RCNN_v01_ep_{epoch}.pt')
 
 
 if __name__ == '__main__':
@@ -257,7 +257,7 @@ if __name__ == '__main__':
     # img = F.to_image_tensor(img)
     # img = F.convert_dtype(img, torch.float32)
     #
-    # model = torch.load(f'../03_models/MASK_RCNN_v01_ep_4.pt')
+    # model = torch.load(f'../models/MASK_RCNN_v01_ep_4.pt')
     #
     # model.eval()
     #
