@@ -34,35 +34,13 @@ def post_process_mask(mask, max_area, min_area, open_kernel=5):
 
     return opening
 
-NUM_OTSU_CLASSES = 3
-ROI_SIZE = 100
-DILATE_ITER = 20
 
-for id in range(8):
-    kpoi = KeypointsOnImage(dir='../01_data/kpoi_store', id=id)
-
-    image = kpoi.image
-
-    image_cv = cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.uint8)
-
-    roi_gen = kpoi.get_roi(ROI_SIZE)
-
-    # image_gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY).astype(np.uint8)
-
-    # -------------------------- HSV ----------------------------------
-
+def color_adjust(image, blue_scaling_factor=2.0, saturation_scaling_factor=1, contrast_scaling_factor=1.1):
     image_hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
 
     hsv_image = image_hsv.astype(np.float32) / 255.0
 
-    # Define scaling factors for saturation and contrast
-    saturation_scaling_factor = 1  # Adjust the saturation factor as needed
-    contrast_scaling_factor = 1.1
-
-    blue_scaling_factor = 2.0  # Adjust the factor as needed
-
     hsv_image[..., 1] *= blue_scaling_factor
-    # Adjust the contrast factor as needed
 
     # Modify the S-channel (saturation) and V-channel (value)
     hsv_image[..., 1] *= saturation_scaling_factor  # Increase saturation
@@ -78,35 +56,14 @@ for id in range(8):
     # Convert the HSV image back to BGR format
     bgr_image = cv2.cvtColor(hsv_image, cv2.COLOR_HSV2BGR)
 
-    # thresholded_satureation = cv2.inRange(image_hsv, (0, 100, 0), (255, 255, 255))
-    # thresholded_value_blue = cv2.inRange(image_hsv, (90, 20, 0), (120, 255, 255))
-    #
-    # thresholded_value_blue = cv2.morphologyEx(thresholded_value_blue, cv2.MORPH_OPEN, kernel=np.ones((5, 5), np.uint8))
-    #
-    # overlay = np.zeros_like(image)
-    # # Set the pixels where the binary image is nonzero to white
-    # overlay[thresholded_value_blue > 0] = [255, 255, 255]
-    #
-    # result = cv2.addWeighted(cv2.cvtColor(image, cv2.COLOR_RGB2BGR), 1 - .5, overlay, .5, 0)
-    #
-    # # cv2.imshow('satur', thresholded_satureation)
-    # cv2.imshow('value', bgr_image)
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
+    return bgr_image
 
-    # -------------------------- HSV ----------------------------------
 
-    image_to_shed = bgr_image
+def extract_background(bgr_image, dilate_kernel=np.ones((3, 3), np.uint8), dilate_iterations=10):
 
-    image_blue = image[:, :, 0]
+    image_gray = bgr_image[:, :, 2]
 
-    image_gray = image_blue.astype(np.uint8)
-
-    image_gray_blur = cv2.GaussianBlur(image_gray, (3, 3), 0)
-
-    # image_to_shed = cv2.cvtColor(image_gray, cv2.COLOR_GRAY2BGR)
-
-    ret_1, thresh = cv2.threshold(image_gray_blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    ret_1, thresh = cv2.threshold(image_gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
     thresh = cv2.bitwise_not(thresh)
 
@@ -114,12 +71,20 @@ for id in range(8):
 
     sure_bg = cv2.dilate(thresh, kernel, iterations=DILATE_ITER)
 
+    return sure_bg
+
+
+def watershed_from_points(kpoi):
+    image = kpoi.image
+
+    bgr_image = color_adjust(image)
+
+    sure_bg = extract_background(bgr_image)
+
     markers = place_seeds(kpoi.keypoints, (sure_bg.shape[0], sure_bg.shape[1]), 14)
 
     sure_fg = np.zeros_like(markers)
     sure_fg[markers > 2] = 255
-
-    # ret, cc = cv2.connectedComponents(sure_fg)
 
     ambiguous = cv2.subtract(sure_bg, sure_fg)
 
@@ -127,27 +92,17 @@ for id in range(8):
 
     markers[ambiguous == 255] = 0
 
-    # plt.imshow(markers, cmap='jet')
-    # plt.show()
-
     markers = markers.astype(np.int32)
 
-    markers = cv2.watershed(image=image_to_shed, markers=markers)
+    markers = cv2.watershed(image=bgr_image, markers=markers)
 
-    # -------------------- POSTPROC -------------------------------
-    kpoi.add_masks(markers)
+    return markers
 
-    post_processed_masks = []
-    for mask in kpoi.masks:
-        mask_postproc = post_process_mask(mask=mask.get('mask'), max_area=200, min_area=20)
-        post_processed_masks.append({'mask': mask_postproc, 'coords': mask.get('coords')})
 
-    kpoi.masks = post_processed_masks
+def plot_boundaries_and_keypoints(kpoi, markers):
+    image = kpoi.image
 
-    # ---------------------- VISU -----------------------------------
-
-    # plotted_masks = kpoi.plot_masks_on_image(image_cv)
-
+    image_cv = cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.uint8)
     image_bundaries = image_cv
     image_bundaries[markers == -1] = [255, 0, 255]
 
@@ -166,15 +121,42 @@ for id in range(8):
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
+
+ROI_SIZE = 100
+DILATE_ITER = 10
+
+for id in range(8):
+    kpoi = KeypointsOnImage(dir='../01_data/kpoi_store', id=id)
+
+    markers = watershed_from_points(kpoi)
+
+    plot_boundaries_and_keypoints(kpoi, markers)
+
+    # -------------------- POSTPROC -------------------------------
+    kpoi.add_masks(markers)
+
+    post_processed_masks = []
+    for mask in kpoi.masks:
+        mask_postproc = post_process_mask(mask=mask.get('mask'), max_area=200, min_area=20)
+        post_processed_masks.append({'mask': mask_postproc, 'coords': mask.get('coords')})
+
+    kpoi.masks = post_processed_masks
+
+    # ---------------------- VISU -----------------------------------
+
+    # plotted_masks = kpoi.plot_masks_on_image(image_cv)
+
+
+
     # Create an all-zero array with the same shape as the RGB image
-    overlay = np.zeros_like(image)
+    # overlay = np.zeros_like(image)
+    #
+    # # Set the pixels where the binary image is nonzero to white
+    # overlay[sure_bg > 0] = [255, 255, 255]
+    #
+    # result = cv2.addWeighted(cv2.cvtColor(image, cv2.COLOR_RGB2BGR), 1 - .5, overlay, .5, 0)
 
-    # Set the pixels where the binary image is nonzero to white
-    overlay[ambiguous > 0] = [255, 255, 255]
-
-    result = cv2.addWeighted(cv2.cvtColor(image, cv2.COLOR_RGB2BGR), 1 - .5, overlay, .5, 0)
-
-    # cv2.imshow("sure_bg", image_cv)
+    # cv2.imshow("sure_bg", result)
     # cv2.waitKey(0)
     # cv2.destroyAllWindows()
     #
