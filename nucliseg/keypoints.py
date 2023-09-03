@@ -241,7 +241,7 @@ def predict_keypoints(image_path: str,
     """
 
     # parse kwargs
-    model_path = kwargs.pop('model_path', 'models/nucleus-keypoint/6hjudtgc/epoch=29-step=6690.pt')
+    model_path = kwargs.pop('model_path', os.path.dirname(__file__) + '/models/nucleus-keypoint/6hjudtgc/epoch=29-step=6690.pt')
     model_input_shape = kwargs.pop('model_input_shape', [3, 256, 256])
     tile_size = kwargs.pop('tile_size', 1024)
     batch_size = kwargs.pop('batch_size', 16)

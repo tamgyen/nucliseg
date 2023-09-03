@@ -1,0 +1,7 @@
+opencv-python~=4.8.0.76
+numpy~=1.25.2
+tqdm~=4.66.1
+pillow~=9.4.0
+torchvision~=0.14.1
+scikit-image~=0.21.0
+setuptools~=59.5.0
