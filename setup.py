@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name="nucliseg",
@@ -7,7 +7,9 @@ setup(
     version="1.0",
     description="hybrid model for cell nucleus segmentation on stained slides.",
     url="https://github.com/tamgyen/nucliseg",
-    packages=["nucliseg"],
+    packages=find_packages(where="nucliseg"),
+    package_dir={"": "nucliseg"},
+    include_package_data=True,
     install_requires=[
         "torch>=0.10",
         "torchvision>=0.11",

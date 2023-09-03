@@ -1,6 +1,7 @@
 from nucliseg.contour import restore_contours, stitch_image
 from nucliseg.keypoints import predict_keypoints
 
+import argparse
 import multiprocessing
 from functools import partial
 from time import perf_counter
@@ -46,4 +47,11 @@ def predict(source_image: str, target_image: str, **kwargs):
 
 
 if __name__ == '__main__':
-    predict('../01_data/src.jpg', '../01_data/dest.jpg')
+    parser = argparse.ArgumentParser(description='Process source and target images with optional keyword arguments.')
+
+    parser.add_argument('source_image', type=str, help='Path to the source image')
+    parser.add_argument('target_image', type=str, help='Path to the target image')
+
+    args = parser.parse_args()
+
+    predict(args.source_image, args.target_image)
