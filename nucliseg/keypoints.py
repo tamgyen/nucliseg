@@ -235,22 +235,19 @@ def image_stack_to_batch_tensor(image_stack: np.ndarray, batch_size: int) -> lis
 
 
 def predict_keypoints(image_path: str,
-                      model_path: str = 'models/nucleus-keypoint/6hjudtgc/epoch=29-step=6690.pt',
-                      model_input_shape=None,
-                      tile_size: int = 1024,
-                      batch_size: int = 16,
-                      min_keypoint_pixel_distance: int = 2,
-                      write_to_file: bool = False,
-                      save_dir: str = '../01_data/kpoi_store',
                       **kwargs) -> list[KeypointsOnImage]:
     """
     This is the main function for predicting keypoint locations on the input image.
     """
 
-
-
-    if model_input_shape is None:
-        model_input_shape = [3, 256, 256]
+    # parse kwargs
+    model_path = kwargs.pop('model_path', 'models/nucleus-keypoint/6hjudtgc/epoch=29-step=6690.pt')
+    model_input_shape = kwargs.pop('model_input_shape', [3, 256, 256])
+    tile_size = kwargs.pop('tile_size', 1024)
+    batch_size = kwargs.pop('batch_size', 16)
+    min_keypoint_pixel_distance = kwargs.pop('min_keypoint_pixel_distance', 2)
+    write_to_file = kwargs.pop('write_to_file', False)
+    save_dir = kwargs.pop('save_dir', '../01_data/kpoi_store')
 
     # check hw
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')

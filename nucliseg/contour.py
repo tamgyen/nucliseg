@@ -155,6 +155,7 @@ def restore_contours(kpoi: KeypointsOnImage, **kwargs) -> KeypointsOnImage:
                              'contour_strength': 2
                              }
 
+    # parse kwargs
     seed_radius = kwargs.pop('seed_radius', 12)
     dilate_iter_background = kwargs.pop('dilate_iter_background', 10)
     blue_scaling_factor = kwargs.pop('blue_scaling_factor', 2)
