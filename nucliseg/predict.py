@@ -4,6 +4,7 @@ from time import perf_counter
 
 import cv2
 import numpy as np
+from tqdm import tqdm
 
 from nucliseg.contour import restore_contours, stitch_image
 from nucliseg.keypoints import predict_keypoints
@@ -21,10 +22,12 @@ def main(source_image: str, target_image: str, **kwargs):
 
     partial_worker = partial(restore_contours, **kwargs)
 
-    print(f'\nRestoring contours with cpu using {num_cores} cores..\n')
+    print(f'\nRestoring contours using {num_cores} CPU cores..\n')
     t_start = perf_counter()
     with multiprocessing.Pool(processes=num_cores) as pool:
-        output_kpois = pool.map(partial_worker, images_with_keypoints)
+        output_kpois = list(tqdm(pool.imap(partial_worker, images_with_keypoints),
+                                 total=len(images_with_keypoints),
+                                 desc='Contouring'))
     t_stop = perf_counter()
 
     t_restore_contours = t_stop - t_start
@@ -43,7 +46,6 @@ def main(source_image: str, target_image: str, **kwargs):
           f'\tt_predict_keypoints: {t_predict_keypoints:.2f}s\n'
           f'\tt_restore_contours: {t_restore_contours:.2f}s\n'
           f'\tt_stitching_writing: {t_stitching_writing:.2f}s\n')
-
 
 
 if __name__ == '__main__':
