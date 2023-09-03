@@ -4,6 +4,7 @@ import cv2
 
 import numpy as np
 import torch
+from matplotlib import pyplot as plt
 from torchvision.transforms.functional import to_tensor
 import torchvision.transforms.functional as F
 
@@ -241,7 +242,7 @@ def predict_keypoints(image_path: str,
     """
 
     # parse kwargs
-    model_path = kwargs.pop('model_path', os.path.dirname(__file__) + '/models/nucleus-keypoint/6hjudtgc/epoch=29-step=6690.pt')
+    model_path = kwargs.pop('model_path', os.path.dirname(__file__) + '/models/nucleus-keypoint/6hjudtgc/keypoint_detector_6hjudtgc.pt')
     model_input_shape = kwargs.pop('model_input_shape', [3, 256, 256])
     tile_size = kwargs.pop('tile_size', 1024)
     batch_size = kwargs.pop('batch_size', 16)
@@ -253,7 +254,8 @@ def predict_keypoints(image_path: str,
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
     # load model and transfer weight to gpu
-    model = torch.load(model_path)
+    model = torch.jit.load(model_path)
+
     model.eval()
     model.to(device)
 
@@ -297,11 +299,6 @@ def predict_keypoints(image_path: str,
                                     id=(int(b // tile_dim), int((b + tile_dim) % tile_dim)))
 
             keypoint_annotated_images.append(kpoi)
-
-            # visu
-            # kpoi_im = kpoi.plot_keypoints_on_image(image)
-            # plt.imshow(kpoi_im)
-            # plt.show()
 
             # write to files if needed
             if write_to_file:

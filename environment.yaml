@@ -8,9 +8,9 @@ dependencies:
   - pytorch=1.13
   - pytorch-cuda=11.7
   - torchvision
-  - opencv-python
   - scikit-image
   - pip
   - pip:
     - setuptools==59.5.0
     - -e .
+    - opencv-python
