@@ -4,7 +4,6 @@ import cv2
 
 import numpy as np
 import torch
-from matplotlib import pyplot as plt
 from torchvision.transforms.functional import to_tensor
 import torchvision.transforms.functional as F
 
