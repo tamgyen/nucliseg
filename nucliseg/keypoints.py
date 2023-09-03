@@ -14,11 +14,19 @@ PIL.Image.MAX_IMAGE_PIXELS = 933120000  # handle large images
 
 
 class KeypointsOnImage:
+    """
+    Class for conveniently storing image tiles and their keypoints together. Also contains some helper functions related
+    to them.
+    """
+
     def __init__(self,
                  image: np.ndarray = None,
                  keypoints: np.ndarray = None,
                  dir: str = None,
                  id: tuple[int, int] = None):
+        """
+        We can construct object from image+keypoint objets or from saved data.
+        """
 
         if image is not None:
             self.image = image
@@ -33,77 +41,84 @@ class KeypointsOnImage:
             self.image = io.imread(f'{dir}/{id[0]}_{id[1]}.png')
             self.keypoints = np.load(f'{dir}/{id[0]}_{id[1]}.npy')
 
-    def save(self, dir):
+    def save(self, dir: str):
+        """
+        Save objects as png and npy files to dir.
+        """
+
         os.makedirs(dir, exist_ok=True)
 
         io.imsave(f'{dir}/{self.id[0]}_{self.id[1]}.png', self.image)
         np.save(f'{dir}/{self.id[0]}_{self.id[1]}.npy', self.keypoints)
 
-    def filter_draw_masks(self, masks=None, draw_settings=None):
+    # TODO: this should be split into separate methods..
+    def filter_draw_masks(self, masks: np.ndarray, draw_settings: dict):
+        """
+        This function iterates over the keypoints once, assigns masks from watershed, filters them based on size, then
+        dilates them to remove misshapen areas and finally restores the contours and draws them.
+        """
 
-        for keypoint_index in range(len(self.keypoints)):
-            x, y = self.keypoints[keypoint_index].astype(np.uint32)
+        color_reference = draw_settings.get('color_reference')
+        classes = draw_settings.get('classes')
 
-            mask = masks == keypoint_index + 4
+        # iterate through keypoints
+        for i in range(len(self.keypoints)):
+            x, y = self.keypoints[i].astype(np.uint32)
 
+            # get mask from watershed result based on label
+            mask = masks == i + 4
             mask = mask.astype(np.uint8)
 
-            # check color
-            color = self.get_mask_color(self.image, mask)
+            # classify based on color
+            color_class = self.get_color_class(mask,
+                                               color_reference,
+                                               classes)
 
-            sub = draw_settings.get('color_reference') - color
-            dists = np.linalg.norm(sub, axis=1)
+            # if valid based on area draw the contour, if not draw a circle
+            if draw_settings.get('max_area') > np.sum(mask) > draw_settings.get('min_area'):
 
-            color_class = draw_settings.get('classes')[np.argmin(dists)]
-
-            # check area
-            area = np.sum(mask)
-
-            if draw_settings.get('max_area') > area > draw_settings.get('min_area'):
-
+                # remove misshapen parts by opening.. this also makes the masks more circular
                 if draw_settings.get('round_contour') > 0:
                     open_kernel = draw_settings.get('round_contour')
-                    opened = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((open_kernel, open_kernel), np.uint8))
+                    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((open_kernel, open_kernel), np.uint8))
 
-                    eroded = cv2.morphologyEx(opened, cv2.MORPH_ERODE, np.ones((3, 3), np.uint8),
-                                              iterations=draw_settings.get('contour_strength'))
+                # get the contour.. select size by number of erode iters
+                eroded = cv2.morphologyEx(mask, cv2.MORPH_ERODE, np.ones((3, 3), np.uint8),
+                                          iterations=draw_settings.get('contour_strength'))
+                contour = mask - eroded
 
-                    contour = opened - eroded
-
-                else:
-                    eroded = cv2.morphologyEx(mask, cv2.MORPH_ERODE, np.ones((3, 3), np.uint8),
-                                              iterations=draw_settings.get('contour_strength'))
-                    contour = mask - eroded
-
+                # draw the contour
                 self.image[contour > 0] = color_class
 
             else:
 
                 cv2.circle(img=self.image, center=(x, y), radius=20, color=color_class, thickness=2)
 
+            # draw keypoints
             cv2.circle(img=self.image, center=(x, y), radius=2, color=color_class, thickness=2)
 
-        return True
-
     @staticmethod
-    def get_mask_color(image, mask):
+    def get_mask_color(image: np.ndarray, mask: np.ndarray) -> np.ndarray:
+        """
+        Calculates mean color of the image below a mask.
+        """
         image_hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
         mean = cv2.mean(image_hsv, mask=mask)
 
         return np.array(mean[:-1])
 
-    def plot_keypoints_on_image(self, image=None, radius=4, color=None):
-        if image is None:
-            image = cv2.cvtColor(self.image.copy(), cv2.COLOR_RGB2BGR)
+    def get_color_class(self, mask: np.ndarray,
+                        color_reference: np.ndarray,
+                        classes: list[tuple]) -> tuple:
+        """
+        Classify a mask based on the L2 distance of its mean color from some reference colors.
+        """
+        color = self.get_mask_color(self.image, mask)
 
-        if color is None:
-            color = [0, 0, 255]
+        sub = color_reference - color
+        dists = np.linalg.norm(sub, axis=1)
 
-        for point in self.keypoints:
-            x, y = point.astype(np.uint32)
-            image = cv2.circle(image, (x, y), radius, color, -1)
-
-        return image
+        return classes[np.argmin(dists)]
 
 
 def get_keypoints_from_heatmap_batch_maxpool(
@@ -121,18 +136,6 @@ def get_keypoints_from_heatmap_batch_maxpool(
 
     Inspired by mmdetection and CenterNet:
       https://mmdetection.readthedocs.io/en/v2.13.0/_modules/mmdet/models/utils/gaussian_target.html
-    Parameters
-    ----------
-    heatmap
-    max_keypoints
-    min_keypoint_pixel_distance
-    abs_max_threshold
-    rel_max_threshold
-    return_scores
-
-    Returns
-    -------
-
     """
 
     batch_size, n_channels, _, width = heatmap.shape
@@ -189,17 +192,11 @@ def get_keypoints_from_heatmap_batch_maxpool(
 def split_image(image: np.ndarray, kernel_size: int) -> np.ndarray:
     """
     Splits the image into "kernel_size" sized tiles.
-    Parameters
-    ----------
-    image
-    kernel_size
-
-    Returns
-    -------
-
     """
     h, w, c = image.shape
+
     im_stack = image.reshape((h // kernel_size, kernel_size, w // kernel_size, kernel_size, c))
+
     im_stack = im_stack.swapaxes(1, 2)
 
     im_stack = im_stack.reshape(-1, im_stack.shape[2], im_stack.shape[3], im_stack.shape[-1])
@@ -207,7 +204,18 @@ def split_image(image: np.ndarray, kernel_size: int) -> np.ndarray:
     return im_stack
 
 
-def image_stack_to_batch_tensor(image_stack, batch_size=16):
+def image_stack_to_batch_tensor(image_stack: np.ndarray, batch_size: int) -> list[torch.Tensor]:
+    """
+
+    Parameters
+    ----------
+    image_stack
+    batch_size
+
+    Returns
+    -------
+
+    """
     batches = []
     batch = []
     i = 1
@@ -233,7 +241,14 @@ def predict_keypoints(image_path: str,
                       batch_size: int = 16,
                       min_keypoint_pixel_distance: int = 2,
                       write_to_file: bool = False,
-                      save_dir: str = '../01_data/kpoi_store'):
+                      save_dir: str = '../01_data/kpoi_store',
+                      **kwargs) -> list[KeypointsOnImage]:
+    """
+    This is the main function for predicting keypoint locations on the input image.
+    """
+
+
+
     if model_input_shape is None:
         model_input_shape = [3, 256, 256]
 
@@ -302,4 +317,4 @@ def predict_keypoints(image_path: str,
 
 
 if __name__ == '__main__':
-    kpois = predict_keypoints('../01_data/src.jpg')
+    kpois = predict_keypoints('../01_data/src.jpg', )

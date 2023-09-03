@@ -13,7 +13,7 @@ from nucliseg.keypoints import predict_keypoints
 def main(source_image: str, target_image: str, **kwargs):
 
     t_start = perf_counter()
-    images_with_keypoints = predict_keypoints(source_image)
+    images_with_keypoints = predict_keypoints(source_image, **kwargs)
     t_stop = perf_counter()
 
     t_predict_keypoints = t_stop-t_start

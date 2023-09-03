@@ -7,16 +7,14 @@ from tqdm import tqdm
 
 def place_seeds(keypoints: tuple, imsize: tuple, radius: int):
     """
-    Draws a circle of scalar labelled pixels
-    Parameters
-    -------
-
+    Draws a circle of scalar labelled pixels around keypoints onto a canvas.
     """
+
     canvas = np.zeros((imsize[0], imsize[1], 3), dtype=np.uint8)
     for label, point in enumerate(keypoints):
         x, y = point.astype(np.uint32)
 
-        canvas = cv2.circle(canvas, (x, y), radius, (label+3, label+3, label+3), thickness=-1)
+        canvas = cv2.circle(canvas, (x, y), radius, (label + 3, label + 3, label + 3), thickness=-1)
 
     return canvas[..., 0]
 
@@ -57,14 +55,8 @@ def extract_background(image: np.ndarray, dilate_iter_background: int) -> np.nda
     """
     This function extracts the pixels that are certainly background.
     Parameters
-    ----------
-    image: input image
-    dilate_iter_background
-
-    Returns
-    -------
-
     """
+
     # get blue channel
     image_gray = image[..., 2]
 
@@ -97,49 +89,54 @@ def extract_background(image: np.ndarray, dilate_iter_background: int) -> np.nda
 def watershed_from_points(kpoi: KeypointsOnImage,
                           seed_radius: int,
                           dilate_iter_background: int,
-                          blue_scaling_factor,
-                          saturation_scaling_factor,
-                          contrast_scaling_factor):
+                          blue_scaling_factor: float,
+                          saturation_scaling_factor: float,
+                          contrast_scaling_factor: float):
+    """
+    Preprocesses the image for watershed segmentation using some color adjustment.Also extracts background, foreground,
+    and places seeds around keypoints. Finally executes watershed.
+    reference: https://docs.opencv.org/4.x/d3/db4/tutorial_py_watershed.html
     """
 
-    """
-
+    # get the image
     image = kpoi.image
 
-    # im_to_shed = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+    # adjust color
+    adjusted_image = color_adjust(image, blue_scaling_factor, saturation_scaling_factor, contrast_scaling_factor)
 
-    bgr_image = color_adjust(image, blue_scaling_factor, saturation_scaling_factor, contrast_scaling_factor)
+    # extract bg
+    sure_bg = extract_background(adjusted_image, dilate_iter_background=dilate_iter_background)
 
-    sure_bg = extract_background(bgr_image, dilate_iter_background=dilate_iter_background)
-
+    # get markers (scalar labelled mask) for watershed: use predicted keypoints for seeds
     markers = place_seeds(kpoi.keypoints, (sure_bg.shape[0], sure_bg.shape[1]), seed_radius)
 
+    # get foreground (just the binary mask of markers)
     sure_fg = np.zeros_like(markers)
     sure_fg[markers > 2] = 255
 
+    # get possible areas to also label as objects
     ambiguous = cv2.subtract(sure_bg, sure_fg)
 
+    # change bg label to 1
     markers += 1
 
+    # mark unknown with 0
     markers[ambiguous == 255] = 0
 
-    markers = cv2.watershed(image=bgr_image, markers=markers.astype(np.int32))
+    # execute segmentation
+    markers = cv2.watershed(image=adjusted_image, markers=markers.astype(np.int32))
 
     return markers
 
 
 def restore_contours(kpoi: KeypointsOnImage, **kwargs) -> KeypointsOnImage:
     """
-
-    Parameters
-    ----------
-    kpoi
-
-    Returns
-    -------
+    This function restores the contours of nuclei around keypoints on the image using watershed algo and then also
+    draws the masks on the image.
 
     """
 
+    # store some default settings.. should be moved to a config file
     default_draw_settings = {'min_area': 50,
                              'max_area': 6000,
                              'color_reference': np.array([[8, 160, 110],  # red
@@ -148,12 +145,12 @@ def restore_contours(kpoi: KeypointsOnImage, **kwargs) -> KeypointsOnImage:
                                                           [114, 60, 198],  # blue
                                                           [15, 87, 125],  # orange
                                                           [115, 26, 200]]),  # yellow
-                             'classes': ((255, 0, 0),
+                             'classes': [(255, 0, 0),
                                          (255, 0, 0),
                                          (255, 0, 0),
                                          (0, 0, 255),
                                          (255, 163, 0),
-                                         (255, 255, 0)),
+                                         (255, 255, 0)],
                              'round_contour': 5,
                              'contour_strength': 2
                              }
@@ -166,29 +163,41 @@ def restore_contours(kpoi: KeypointsOnImage, **kwargs) -> KeypointsOnImage:
 
     draw_settings = kwargs.pop('draw_settings', default_draw_settings)
 
-    markers = watershed_from_points(kpoi,
-                                    seed_radius=seed_radius,
-                                    dilate_iter_background=dilate_iter_background,
-                                    blue_scaling_factor=blue_scaling_factor,
-                                    saturation_scaling_factor=saturation_scaling_factor,
-                                    contrast_scaling_factor=contrast_scaling_factor)
+    # watershed to restore contours
+    scalar_labelled_masks = watershed_from_points(kpoi,
+                                                  seed_radius=seed_radius,
+                                                  dilate_iter_background=dilate_iter_background,
+                                                  blue_scaling_factor=blue_scaling_factor,
+                                                  saturation_scaling_factor=saturation_scaling_factor,
+                                                  contrast_scaling_factor=contrast_scaling_factor)
 
-    kpoi.filter_draw_masks(masks=markers,
+    # filter and draw valid contours
+    kpoi.filter_draw_masks(masks=scalar_labelled_masks,
                            draw_settings=draw_settings)
 
     return kpoi
 
 
 def stitch_image(kpois: list[KeypointsOnImage]):
+    """
+    This function can reassemble the source image based on the objects' ID property.
+    """
+
+    # calculate tile size
     tile_size = kpois[0].image.shape[0]
-    original_image_size = (np.sqrt(len(kpois))*tile_size).astype(np.int32)
+
+    # and original image dims
+    original_image_size = (np.sqrt(len(kpois)) * tile_size).astype(np.int32)
+
+    # preallocate
     canvas = np.zeros((original_image_size, original_image_size, 3))
 
+    # draw kpoi images based on their position ID
     for kpoi in tqdm(kpois, desc='Stitching'):
-        x = kpoi.id[1]*tile_size
-        y = kpoi.id[0]*tile_size
+        x = kpoi.id[1] * tile_size
+        y = kpoi.id[0] * tile_size
 
-        canvas[y:y+tile_size, x:x+tile_size, :] = cv2.cvtColor(kpoi.image, cv2.COLOR_RGB2BGR)
+        canvas[y:y + tile_size, x:x + tile_size, :] = cv2.cvtColor(kpoi.image, cv2.COLOR_RGB2BGR)
 
     return canvas
 
