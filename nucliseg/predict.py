@@ -47,7 +47,7 @@ def predict(source_image: str, target_image: str, **kwargs):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Process source and target images with optional keyword arguments.')
+    parser = argparse.ArgumentParser(description='')
 
     parser.add_argument('source_image', type=str, help='Path to the source image')
     parser.add_argument('target_image', type=str, help='Path to the target image')

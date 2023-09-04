@@ -7,14 +7,6 @@ setup(
     version="1.0",
     description="hybrid model for cell nucleus segmentation on stained slides.",
     url="https://github.com/tamgyen/nucliseg",
-    packages=find_packages(where="nucliseg"),
-    package_dir={"": "nucliseg"},
+    packages=find_packages(),
     include_package_data=True,
-    install_requires=[
-        "torch>=0.10",
-        "torchvision>=0.11",
-        "pytorch-lightning>=1.5.10,<=1.9.4",
-        "tqdm",
-        "scikit-image",
-    ],
 )
